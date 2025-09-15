@@ -4,7 +4,14 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "hardhat compile",
+    "clean": "hardhat clean",
+    "deploy:sepolia": "hardhat deploy --network sepolia",
+    "deploy:holesky": "hardhat deploy --network holesky",
+    "task:lock": "hardhat lock-and-cross --network sepolia --tokenid 1",
+    "task:lock:holesky": "hardhat lock-and-cross --network holesky --tokenid 1",
+    "verify": "hardhat verify --network sepolia",
+    "test": "hardhat test"
   },
   "keywords": [],
   "author": "",
