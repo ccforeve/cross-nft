@@ -5,10 +5,38 @@ task("lock-and-cross")
     .addOptionalParam("chainselector", "chain selector of dest chain")
     .addOptionalParam("receiver", "receiver address of dest chain")
     .addParam("tokenid", "tokenid to be cross chain")
+    .addFlag("json", "output structured JSON summary only")
+    .addFlag("dryrun", "estimate and validate only, do not send tx")
     .setAction(async (taskArgs, hre) => {
         const { getNamedAccounts, deployments, ethers } = hre;
         const { firstAccount } = await getNamedAccounts();
-        const tokenId = taskArgs.tokenid;
+        let tokenId;
+        const summary = {
+            network: hre.network.name,
+            sender: firstAccount,
+            receiver: undefined,
+            tokenId: undefined,
+            chainselector: undefined,
+            estimatedFeeLINK: undefined,
+            linkTopupLINK: "0",
+            txHash: undefined,
+            events: {}
+        };
+        try {
+            if (taskArgs.tokenid === undefined || taskArgs.tokenid === null || taskArgs.tokenid === "") {
+                throw new Error("tokenid is required");
+            }
+            tokenId = BigInt(taskArgs.tokenid);
+            summary.tokenId = tokenId.toString();
+        } catch (e) {
+            const msg = `Invalid tokenid: ${taskArgs.tokenid}`;
+            if (taskArgs.json) {
+                console.log(JSON.stringify({ ok: false, error: msg }));
+                return;
+            }
+            console.error("❌", msg);
+            return;
+        }
         
         console.log("Starting lock-and-cross task...");
         console.log("Token ID:", tokenId);
@@ -17,7 +45,15 @@ task("lock-and-cross")
         // 1. 获取配置
         let chainselector, receiver;
         if (taskArgs.chainselector) {
-            chainselector = taskArgs.chainselector;
+            try {
+                if (!/^\d+$/.test(String(taskArgs.chainselector))) throw new Error("chainselector must be a numeric string");
+                chainselector = String(taskArgs.chainselector);
+            } catch (e) {
+                const msg = `Invalid chainselector: ${taskArgs.chainselector}`;
+                if (taskArgs.json) { console.log(JSON.stringify({ ok: false, error: msg })); return; }
+                console.error("❌", msg);
+                return;
+            }
             console.log("Using provided chainselector:", chainselector);
         } else {
             chainselector = networkConfig[hre.network.config.chainId].companionChainSelector;
@@ -26,6 +62,12 @@ task("lock-and-cross")
         
         if (taskArgs.receiver) {
             receiver = taskArgs.receiver;
+            if (!ethers.isAddress(receiver)) {
+                const msg = `Invalid receiver address: ${receiver}`;
+                if (taskArgs.json) { console.log(JSON.stringify({ ok: false, error: msg })); return; }
+                console.error("❌", msg);
+                return;
+            }
             console.log("Using provided receiver:", receiver);
         } else {
             console.log("Getting receiver from companion network...");
@@ -33,6 +75,8 @@ task("lock-and-cross")
             receiver = nftPoolMintAndBurnDeployment.address;
             console.log("Using default receiver from companion network:", receiver);
         }
+        summary.receiver = receiver;
+        summary.chainselector = String(chainselector);
 
         // 2. 获取合约实例
         try {
@@ -74,10 +118,12 @@ task("lock-and-cross")
                     payload
                 );
                 console.log(`Estimated fee: ${ethers.formatEther(estimatedFee)} LINK`);
+                summary.estimatedFeeLINK = ethers.formatEther(estimatedFee);
             } catch (error) {
                 console.error("❌ Fee estimation failed:", error);
                 estimatedFee = ethers.parseEther("1");
                 console.log(`Using default fee: ${ethers.formatEther(estimatedFee)} LINK`);
+                summary.estimatedFeeLINK = ethers.formatEther(estimatedFee);
             }
 
             // 5. 确保合约有足够的 LINK
@@ -92,7 +138,7 @@ task("lock-and-cross")
             }
             
             // 确保所有值都是 BigInt 类型
-            if (currentBalance < estimatedFee) {
+            if (!taskArgs.dryrun && currentBalance < estimatedFee) {
                 const amountNeeded = estimatedFee - currentBalance + ethers.parseEther("1");
                 console.log(`Transferring ${ethers.formatEther(amountNeeded)} LINK to contract...`);
                 
@@ -105,6 +151,7 @@ task("lock-and-cross")
                     console.log("Transfer transaction sent, waiting for confirmation...");
                     await transferTx.wait(2);
                     console.log("✅ LINK transfer successful");
+                    summary.linkTopupLINK = ethers.formatEther(amountNeeded);
                 } catch (error) {
                     console.error("❌ LINK transfer failed:", error);
                 }
@@ -129,6 +176,12 @@ task("lock-and-cross")
             }
 
             // 7. 执行跨链锁定
+            if (taskArgs.dryrun) {
+                const result = { ok: true, dryrun: true, ...summary };
+                console.log(taskArgs.json ? JSON.stringify(result) : result);
+                return;
+            }
+
             try {
                 console.log("Locking and sending NFT...");
                 const tx = await nftPoolLockAndRelease.lockAndSendNFT(
@@ -145,6 +198,7 @@ task("lock-and-cross")
                 const receipt = await tx.wait();
                 console.log("✅ Transaction successful!");
                 console.log(`Transaction hash: ${receipt.hash}`);
+                summary.txHash = receipt.hash;
                 
                 // 检查事件日志
                 const lockEvent = receipt.logs.find(log => 
@@ -153,6 +207,9 @@ task("lock-and-cross")
                 
                 if (lockEvent) {
                     console.log("Lock initiated for token:", lockEvent.args.tokenId.toString());
+                    summary.events.LockInitiated = {
+                        tokenId: lockEvent.args.tokenId?.toString?.() ?? String(tokenId)
+                    };
                 }
                 
                 const messageEvent = receipt.logs.find(log => 
@@ -161,7 +218,12 @@ task("lock-and-cross")
                 
                 if (messageEvent) {
                     console.log("📨 Message sent with ID:", messageEvent.args.messageId);
+                    summary.events.MessageSent = {
+                        messageId: messageEvent.args.messageId
+                    };
                 }
+                const result = { ok: true, ...summary };
+                console.log(taskArgs.json ? JSON.stringify(result) : result);
             } catch (error) {
                 console.error("❌ Transaction failed:", error);
                 
@@ -174,9 +236,13 @@ task("lock-and-cross")
                         console.log("Raw error data:", error.data);
                     }
                 }
+                const result = { ok: false, error: String(error?.message || error), ...summary };
+                console.log(taskArgs.json ? JSON.stringify(result) : result);
             }
         } catch (error) {
             console.error("❌ Failed to get contract instances:", error);
+            const result = { ok: false, error: String(error?.message || error), ...summary };
+            console.log(taskArgs.json ? JSON.stringify(result) : result);
         }
     });
 
