@@ -2,7 +2,7 @@ require("@nomicfoundation/hardhat-toolbox");
 require("@nomicfoundation/hardhat-ethers");
 require("hardhat-deploy");
 require("hardhat-deploy-ethers");
-require("@chainlink/env-enc").config();
+require("dotenv").config();
 require("./task")
 
 const config = require("./config");
