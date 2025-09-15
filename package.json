@@ -8,8 +8,11 @@
     "clean": "hardhat clean",
     "deploy:sepolia": "hardhat deploy --network sepolia",
     "deploy:holesky": "hardhat deploy --network holesky",
-    "task:lock": "hardhat lock-and-cross --network sepolia --tokenid 1",
-    "task:lock:holesky": "hardhat lock-and-cross --network holesky --tokenid 1",
+    "task:lock": "hardhat lock-and-cross --network sepolia --json",
+    "task:lock:dryrun": "hardhat lock-and-cross --network sepolia --dryrun --json",
+    "task:lock:holesky": "hardhat lock-and-cross --network holesky --json",
+    "task:lock:holesky:dryrun": "hardhat lock-and-cross --network holesky --dryrun --json",
+    "task:lock:custom": "hardhat lock-and-cross",
     "verify": "hardhat verify --network sepolia",
     "test": "hardhat test"
   },
