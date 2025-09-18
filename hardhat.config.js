@@ -20,15 +20,17 @@ module.exports = {
       accounts: [PRIVATE_KEY],
       blockConfirmations: 6,
       companionNetworks: {
-        destChain: "holesky"
+        destChain: "amoy"
       }
     },
-    holesky: {
-      // url: HOLESKY_RPC_URL,
-      url: "https://eth-holesky.public.blastapi.io",
-      chainId: 17000,
+    amoy: {
+      // url: "AMOY_RPC_URL",
+      url: "https://rpc-amoy.polygon.technology",
+      chainId: 80002,
       accounts: [PRIVATE_KEY],
       blockConfirmations: 6,
+      gas: 30000000,
+      gasPrice: 100000000000,
       companionNetworks: {
         destChain: "sepolia"
       }

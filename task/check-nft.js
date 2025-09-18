@@ -3,18 +3,27 @@ const { task } = require("hardhat/config")
 task("check-nft")
     .addFlag("json", "output structured JSON only")
     .addOptionalParam("address", "filter by owner address")
-    .addOptionalParam("contract", "MyToken contract address override")
+    .addOptionalParam("contract", "contract address override")
+    .addOptionalParam("contractname", "ABI to use: MyToken or WrappedMyToken", "MyToken")
     .setAction(async (taskArgs, hre) => {
         const { ethers, deployments } = hre;
 
         let myTokenAddr;
+        let contractName = taskArgs.contractname || "MyToken";
         try {
             if (taskArgs.contract) {
                 if (!ethers.isAddress(taskArgs.contract)) throw new Error("invalid contract address");
                 myTokenAddr = taskArgs.contract;
             } else {
-                const d = await deployments.get("MyToken");
-                myTokenAddr = d.address;
+                try {
+                    const d = await deployments.get("MyToken");
+                    myTokenAddr = d.address;
+                    contractName = "MyToken";
+                } catch (_) {
+                    const d2 = await deployments.get("WrappedMyToken");
+                    myTokenAddr = d2.address;
+                    contractName = "WrappedMyToken";
+                }
             }
         } catch (e) {
             const msg = `Failed to resolve MyToken address: ${e?.message || e}`;
@@ -23,12 +32,13 @@ task("check-nft")
             return;
         }
 
-        const nft = await ethers.getContractAt("MyToken", myTokenAddr);
+        const nft = await ethers.getContractAt(contractName, myTokenAddr);
 
         const result = {
             ok: true,
             network: hre.network.name,
             contract: String(myTokenAddr),
+            contractName,
             totalSupply: "0",
             tokens: []
         };
